@@ -1,47 +1,56 @@
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(feather)
 library(shiny)
-library(bslib)
+library(corrplot)
 
-# Define UI for app that draws a histogram ----
-ui <- page_sidebar(
-  # App title ----
-  title = "Hello Shiny!",
-  # Sidebar panel for inputs ----
-  sidebar = sidebar(
-    # Input: Slider for the number of bins ----
-    sliderInput(
-      inputId = "bins",
-      label = "Number of bins:",
-      min = 1,
-      max = 50,
-      value = 30
+# Cargar los datos
+boston_data <- read_feather("boston_clean.feather")
+
+# Definir la interfaz de usuario
+ui <- fluidPage(
+  titlePanel("Análisis Exploratorio de Datos - Boston Housing"),
+  sidebarLayout(
+    sidebarPanel(
+      sliderInput("sample_size", "Número de Muestras:",
+                  min = 10, max = nrow(boston_data), value = 100, step = 10),
+      selectInput("var_select", "Selecciona una Variable:",
+                  choices = names(boston_data), selected = "MEDV")
+    ),
+    mainPanel(
+      tabsetPanel(
+        tabPanel("Histograma", plotOutput("histPlot")),
+        tabPanel("Correlaciones", plotOutput("corrPlot")),
+        tabPanel("Parámetros Seleccionados", verbatimTextOutput("summaryText"))
+      )
     )
-  ),
-  # Output: Histogram ----
-  plotOutput(outputId = "distPlot")
+  )
 )
 
-# Define server logic required to draw a histogram ----
+# Definir el servidor
 server <- function(input, output) {
+  sampled_data <- reactive({
+    boston_data %>% sample_n(input$sample_size)
+  })
 
-  # Histogram of the Old Faithful Geyser Data ----
-  # with requested number of bins
-  # This expression that generates a histogram is wrapped in a call
-  # to renderPlot to indicate that:
-  #
-  # 1. It is "reactive" and therefore should be automatically
-  #    re-executed when inputs (input$bins) change
-  # 2. Its output type is a plot
-  output$distPlot <- renderPlot({
+  output$histPlot <- renderPlot({
+    ggplot(sampled_data(), aes_string(x = input$var_select)) +
+      geom_histogram(fill = "skyblue", color = "black", bins = 30) +
+      labs(title = paste("Histograma de", input$var_select),
+           x = input$var_select, y = "Frecuencia")
+  })
 
-    x    <- faithful$waiting
-    bins <- seq(min(x), max(x), length.out = input$bins + 1)
+  output$corrPlot <- renderPlot({
+    cor_matrix <- cor(sampled_data())
+    corrplot(cor_matrix, method = "color", type = "upper", tl.cex = 0.8)
+  })
 
-    hist(x, breaks = bins, col = "#007bc2", border = "white",
-         xlab = "Waiting time to next eruption (in mins)",
-         main = "Histogram of waiting times")
-
-    })
-
+  output$summaryText <- renderPrint({
+    summary(sampled_data())
+  })
 }
 
+# Iniciar la aplicación Shiny
 shinyApp(ui = ui, server = server)
+
